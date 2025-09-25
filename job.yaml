@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: log-test-job
+  namespace: test
+spec:
+  template:
+    spec:
+      containers:
+      - name: logger
+        image: busybox
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            for i in $(seq 1 20); do
+              echo "Log line $i from Kubernetes Job at $(date)"
+              sleep 2
+            done
+      restartPolicy: Never
+  backoffLimit: 1

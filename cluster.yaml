@@ -1,0 +1,53 @@
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: quick-es
+  namespace: elasticsearch
+spec:
+  version: 8.15.0
+  nodeSets:
+    - name: master
+      count: 1
+      volumeClaimTemplates:    # attach PVC
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            resources:
+              requests:
+                storage: 2Gi
+            storageClassName: hostpath
+            volumeName: es-local-pv-master
+            accessModes:
+              - ReadWriteOnce
+      config:
+        node.roles: ["master"]
+    - name: data
+      count: 1
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            resources:
+              requests:
+                storage: 5Gi
+            storageClassName: hostpath
+            volumeName: es-local-pv-data
+            accessModes:
+              - ReadWriteOnce
+      config:
+        node.roles: ["data_hot", "data_content", "ingest"]
+    - name: client
+      count: 1
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            resources:
+              requests:
+                storage: 1Gi
+            storageClassName: hostpath
+            volumeName: es-local-pv-client
+            accessModes:
+              - ReadWriteOnce
+      config:
+        node.roles: []
