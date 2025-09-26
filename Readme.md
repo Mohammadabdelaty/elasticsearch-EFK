@@ -102,3 +102,19 @@ Then start watching you logs
 
 ## Snapshots
 
+It's much better to use snapshot by elasticsearch REST API.
+Also you may need to use a cronjob to do it daily, but what about your storage!, you need to set a retention policy. In my case, I set it daily keeping only the last 3 days snapshots and remove the older ones.
+
+```bash
+kubectl apply -f cronjob.yaml -n elasticsearch
+```
+
+> It might be better to test each line in the cronjob manually befor deploying
+
+> Also, the date may vary in both case manually -Your timezone- and automatically -GMT zone-, as the curlimage's date is set to +00:00
+
+# References:
+* https://github.com/elastic/helm-charts/tree/main
+* https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-snapshot-create
+* https://docs.fluentbit.io/manual/installation/downloads/kubernetes
+
