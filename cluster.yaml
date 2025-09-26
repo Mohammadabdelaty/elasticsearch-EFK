@@ -1,53 +1,118 @@
+---
 apiVersion: elasticsearch.k8s.elastic.co/v1
 kind: Elasticsearch
 metadata:
-  name: quick-es
-  namespace: elasticsearch
+  name: kubelog
 spec:
-  version: 8.15.0
+  version: 8.17.0
+  transport:
+    service:
+      metadata:
+        labels:
+          cluster: kubelog
+      spec:
+        type: ClusterIP
   nodeSets:
-    - name: master
-      count: 1
-      volumeClaimTemplates:    # attach PVC
-        - metadata:
-            name: elasticsearch-data
-          spec:
+  - name: master-nodes
+    count: 1
+    podTemplate:
+      spec:
+        containers:
+          - name: elasticsearch
+            image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
             resources:
               requests:
-                storage: 2Gi
-            storageClassName: hostpath
-            volumeName: es-local-pv-master
-            accessModes:
-              - ReadWriteOnce
-      config:
-        node.roles: ["master"]
-    - name: data
-      count: 1
-      volumeClaimTemplates:
-        - metadata:
-            name: elasticsearch-data
-          spec:
+                memory: 4Gi
+                cpu: 500m
+              limits:
+                memory: 8Gi
+                cpu: 1000m
+            volumeMounts:
+            - name: backup
+              mountPath: /backup
+        volumes:
+        - name: backup  
+          persistentVolumeClaim:
+            claimName: es-pvc
+    config:
+      node.roles: ["master"]
+      path.repo: ["/backup"]
+      xpack.ml.enabled: true
+      # xpack.security.enabled: false
+      # xpack.security.transport.ssl.enabled: false
+    volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data # it should be only kubelog like cluster name but we can't change it now after deployment
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+        storageClassName: nfs-client
+  - name: data-nodes
+    count: 1
+    podTemplate:
+      spec:
+        containers:
+          - name: elasticsearch
+            image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
             resources:
               requests:
-                storage: 5Gi
-            storageClassName: hostpath
-            volumeName: es-local-pv-data
-            accessModes:
-              - ReadWriteOnce
-      config:
-        node.roles: ["data_hot", "data_content", "ingest"]
-    - name: client
-      count: 1
-      volumeClaimTemplates:
-        - metadata:
-            name: elasticsearch-data
-          spec:
+                memory: 4Gi
+                cpu: 1000m
+              limits:
+                memory: 8Gi
+                cpu: 2000m
+            volumeMounts:
+            - name: backup
+              mountPath: /backup
+        volumes:
+        - name: backup  
+          persistentVolumeClaim:
+            claimName: es-pvc
+    config:
+      node.roles: ["data","ingest"]
+      path.repo: ["/backup"]
+      xpack.ml.enabled: true
+      # xpack.security.enabled: false
+      # xpack.security.transport.ssl.enabled: false
+    volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data # it should be only kubelog like cluster name but we can't change it now after deployment
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+        storageClassName: nfs-client
+  - name: client-nodes
+    count: 1
+    podTemplate:
+      spec:
+        containers:
+          - name: elasticsearch
+            image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
             resources:
               requests:
-                storage: 1Gi
-            storageClassName: hostpath
-            volumeName: es-local-pv-client
-            accessModes:
-              - ReadWriteOnce
-      config:
-        node.roles: []
+                memory: 4Gi
+                cpu: 500m
+              limits:
+                memory: 8Gi
+                cpu: 1000m
+    config:
+      node.roles: []
+      xpack.ml.enabled: true
+      # xpack.security.enabled: false
+      # xpack.security.transport.ssl.enabled: false
+    volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data # it should be only kubelog like cluster name but we can't change it now after deployment
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        storageClassName: nfs-client

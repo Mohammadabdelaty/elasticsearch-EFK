@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: es-daily-snapshot
+  namespace: elasticsearch
+spec:
+  schedule: "0 2 * * *"   # every day at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: es-snapshot
+            image: ubuntu:latest
+            image: curlimages/curl:8.6.0
+            command:
+              - /bin/sh
+              - -c
+              - |
+                SNAP_NAME="daily-$(date +%Y%m%d-%H%M%S)"
+                echo $SNAP_NAME
+                echo "Taking snapshot: $SNAP_NAME"
+                curl -k -u elastic:<PASS> -X PUT "http://<svc>:9200/_snapshot/my_repository/$SNAP_NAME?wait_for_completion=true"   -H "Content-Type: application/json" -d '
+                {
+                  "ignore_unavailable": true,
+                  "include_global_state": false,
+                  "metadata": {
+                    "taken_by": "elastic",
+                    "taken_because": "backup before upgrading"
+                  }
+                }' && \
+                SNAPSHOTS=$(curl -s -k -u elastic:<PASS> "http://<svc>:9200/_snapshot/my_repository/_all" | grep -o '"snapshot":"[^"]*"' | cut -d':' -f2  | tr -d '"' | sort)
+                COUNT=$(echo "$SNAPSHOTS" | wc -l)
+                if [ $COUNT -gt 3 ]; then
+                  DELETE=$(echo "$SNAPSHOTS" | head -n -3)
+                  for snap in $DELETE; do
+                    echo "Deleting $snap"
+                    curl -s -k -u elastic:<PASS> -X DELETE "http://<svc>:9200/_snapshot/my_repository/$snap"
+                  done
+                fi
+          restartPolicy: OnFailure

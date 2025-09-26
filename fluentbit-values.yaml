@@ -366,9 +366,6 @@ luaScripts:
     function set_index(tag, timestamp, record)
         index = "fluentbit-"
         if record["kubernetes"] ~= nil then
-            if record["kubernetes"]["namespace_name"] == "kube-system" then
-                return -1, timestamp, record  -- Skip logs from the kube-system namespace
-            end
             if record["kubernetes"]["namespace_name"] ~= nil then
                 if record["kubernetes"]["container_name"] ~= nil then
                     record["es_index"] = index
@@ -440,7 +437,7 @@ config:
         Host elasticsearch-master
         Port 9200
         HTTP_User elastic
-        HTTP_Passwd BCVmHi66uVN7XbHJ
+        HTTP_Passwd <PASS>
         tls On
         tls.verify Off
         Logstash_Format On
@@ -455,7 +452,7 @@ config:
         Host elasticsearch-master
         Port 9200
         HTTP_User elastic
-        HTTP_Passwd BCVmHi66uVN7XbHJ
+        HTTP_Passwd <PASS>
         tls On
         tls.verify Off
         Logstash_Format On

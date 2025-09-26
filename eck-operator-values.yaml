@@ -61,9 +61,6 @@ securityContext:
 
 # nodeSelector defines the node selector for the operator pod.
 nodeSelector: {}
-# nodeSelector:
-#   partition: pilot
-#   gpu: unsupported
 
 # tolerations defines the node tolerations for the operator pod.
 tolerations: []

@@ -2,7 +2,44 @@
 
 In this repo we will make a small project to be deployed in your home lab for testing.
 
-## Elasticsearch
+There are two ways covered in this repo:
+
+1- Elastic Operator then elasticsearch clusters. 
+*(Better in real or bigger environment)*
+
+2- Direct elasticsearch cluster. *(Suits local test)*
+
+## 1- Elasticsearch Operator
+
+### Operator
+
+You might need to consider increasing default value of `vm.max_map_count` before deploying the operator on your worker nodes.
+
+```bash
+sysctl -w vm.max_map_count=262144
+```
+Deploy the operator
+```bash
+helm repo add elastic https://helm.elastic.co
+helm repo update
+helm install -n elasticsearch --create-namespace elastic-operator elastic/eck-operator -n elasticsearch -f eck-operator-values.yaml
+```
+
+While waiting for the operator to be `Ready`, you may need to preper and pvc specified for snapshot.
+
+```bash
+# I used nfs
+kubectl -n elasticsearch apply -f backup-pv.yaml
+```
+
+Also I deployed a nfs-autoprovisioner for the data
+
+### ES cluster
+```bash
+kubectl -n elasticsearch apply -f cluster.yaml
+```
+
+## 2- Elasticsearch
 
 Use helm to deploy elasticsearch cluster with only one master node
 ```bash
@@ -15,23 +52,6 @@ helm install elasticsearch elastic/elasticsearch \
   --set resources.requests.cpu=500m \
   --set volumeClaimTemplate.resources.requests.storage=5Gi
 ```
--------------------
-## Elasticsearch Operator
-This part in case you need to install an operator:
-
-```bash
-# apply pv
-kubectl -n elasticsearch apply -f backup-pv.yaml
-
-# patc pv with hostpath
-kubectl patch pv es-local-pv-master -p '{"spec":{"storageClassName":"hostpath"}}'
-kubectl patch pv es-local-pv-data -p '{"spec":{"storageClassName":"hostpath"}}'
-kubectl patch pv es-local-pv-client -p '{"spec":{"storageClassName":"hostpath"}}'
-
-# apply cluster
-kubectl -n elasticsearch apply -f cluster.yaml
-```
--------------------------
 
 Get admin username and password to use in the following steps
 ```bash
@@ -47,12 +67,21 @@ helm install kibana elastic/kibana \
   --set service.type=LoadBalancer
 ```
 
-Then open http://localhost:5601 and try to acces using the cresd for the last step.
+Then open http://localhost:5601 and try to acces using the creds for the last step.
 
 ## FluenBit
 
 ```bash
 helm install fluent-bit fluent/fluent-bit -f values.yaml -n elasticsearch
+```
+
+## Workload Example
+
+Let's create job with simple logs to detect in the elastic
+
+```bash
+kubectl create ns test
+kubectl apply -f job.yaml -n test
 ```
 
 Now in the UI kibana go to: Stack Management > Data View > Add Data. Name it, Then make the index is logstash -just copy logstash line from the right column.
@@ -71,5 +100,5 @@ Then start watching you logs
 
 ![alt text](screens/image-3.png)
 
-## EBS: Snapshots
+## Snapshots
 
