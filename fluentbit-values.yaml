@@ -403,7 +403,7 @@ config:
         Path /var/log/containers/*.log
         multiline.parser docker, cri
         Tag kube.*
-        Mem_Buf_Limit 5MB
+        Mem_Buf_Limit 100MB
         Skip_Long_Lines On
 
     [INPUT]
@@ -415,10 +415,15 @@ config:
   ## https://docs.fluentbit.io/manual/pipeline/filters
   filters: |
     [FILTER]
+        Name rewrite_tag
+        Match kube.*
+        Rule fluentbit .* es.fluentbit true
+
+    [FILTER]
         Name kubernetes
         Match kube.*
         Merge_Log On
-        Keep_Log Off
+        Keep_Log On
         K8S-Logging.Parser On
         K8S-Logging.Exclude On
 
@@ -440,8 +445,7 @@ config:
         HTTP_Passwd <PASS>
         tls On
         tls.verify Off
-        Logstash_Format On
-        Logstash_Prefix logstash
+        Index fluentbit
         Retry_Limit False
         Suppress_Type_Name On
 
@@ -455,8 +459,7 @@ config:
         HTTP_Passwd <PASS>
         tls On
         tls.verify Off
-        Logstash_Format On
-        Logstash_Prefix node
+        Index fluentbit
         Retry_Limit False
         Suppress_Type_Name On
 

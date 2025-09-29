@@ -84,11 +84,11 @@ kubectl create ns test
 kubectl apply -f job.yaml -n test
 ```
 
-Now in the UI kibana go to: Stack Management > Data View > Add Data. Name it, Then make the index is logstash -just copy logstash line from the right column.
+Now in the UI kibana go to: Stack Management > Data View > Add Data. Name it, Then make the index is fluentbit -just copy fluentbit line from the right column.
 
 ![alt text](screens/image.png)
 
-While adding the data you should see index pattern: `logstash-2025.09.24` 
+While adding the data you should see index pattern: `fluentbit` 
 
 ![alt text](screens/image-1.png)
 
