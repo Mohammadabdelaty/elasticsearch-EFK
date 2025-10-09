@@ -279,7 +279,8 @@ podDisruptionBudget:
   annotations: {}
   maxUnavailable: "30%"
 
-nodeSelector: {}
+nodeSelector: 
+  partition: pilot
 
 tolerations: []
 
@@ -361,26 +362,34 @@ networkPolicy:
 #   ingress:
 #     from: []
 
-luaScripts:
-  setIndex.lua: |
-    function set_index(tag, timestamp, record)
-        index = "fluentbit-"
-        if record["kubernetes"] ~= nil then
-            if record["kubernetes"]["namespace_name"] ~= nil then
-                if record["kubernetes"]["container_name"] ~= nil then
-                    record["es_index"] = index
-                        .. record["kubernetes"]["namespace_name"]
-                        .. "-"
-                        .. record["kubernetes"]["container_name"]
-                    return 1, timestamp, record
-                end
-                record["es_index"] = index
-                    .. record["kubernetes"]["namespace_name"]
-                return 1, timestamp, record
-            end
-        end
-        return 1, timestamp, record
-    end
+luaScripts: {}
+  # stringifyLabels.lua: |
+  #   function flatten_labels(tag, timestamp, record)
+  #       if record["kubernetes"] ~= nil and record["kubernetes"]["labels"] ~= nil then
+  #           local cjson = require("cjson")
+  #           record["kubernetes"]["labels"] = cjson.encode(record["kubernetes"]["labels"])
+  #       end
+  #       return 1, timestamp, record
+  #   end
+  # setIndex.lua: |
+  #   function set_index(tag, timestamp, record)
+  #       index = "fluentbit-"
+  #       if record["kubernetes"] ~= nil then
+  #           if record["kubernetes"]["namespace_name"] ~= nil then
+  #               if record["kubernetes"]["container_name"] ~= nil then
+  #                   record["es_index"] = index
+  #                       .. record["kubernetes"]["namespace_name"]
+  #                       .. "-"
+  #                       .. record["kubernetes"]["container_name"]
+  #                   return 1, timestamp, record
+  #               end
+  #               record["es_index"] = index
+  #                   .. record["kubernetes"]["namespace_name"]
+  #               return 1, timestamp, record
+  #           end
+  #       end
+  #       return 1, timestamp, record
+  #   end
 
 ## https://docs.fluentbit.io/manual/administration/configuring-fluent-bit/classic-mode/configuration-file
 config:
@@ -400,46 +409,46 @@ config:
   inputs: |
     [INPUT]
         Name tail
-        Path /var/log/containers/*.log
+        Path /var/log/containers/*.log,/var/log/pods/**/*.log
         multiline.parser docker, cri
         Tag kube.*
-        Mem_Buf_Limit 100MB
+        Mem_Buf_Limit 100GB
         Skip_Long_Lines On
+        Refresh_Interval 10
+        DB /var/log/flb_kube.db
 
     [INPUT]
         Name systemd
         Tag host.*
         Systemd_Filter _SYSTEMD_UNIT=kubelet.service
-        Read_From_Tail On
+        Read_From_Tail On 
 
   ## https://docs.fluentbit.io/manual/pipeline/filters
   filters: |
     [FILTER]
         Name rewrite_tag
         Match kube.*
+        emitter_mem_buf_limit 10M
         Rule fluentbit .* es.fluentbit true
 
     [FILTER]
         Name kubernetes
         Match kube.*
         Merge_Log On
+        Merge_Log_Key log_processed
+        Buffer_Size 10M
         Keep_Log On
         K8S-Logging.Parser On
-        K8S-Logging.Exclude On
-
-    [FILTER]
-        Name lua
-        Match kube.*
-        script /fluent-bit/scripts/setIndex.lua
-        call set_index
+        K8S-Logging.Exclude Off
 
   ## https://docs.fluentbit.io/manual/pipeline/outputs
+# match was kube.*
+# Type was _doc
   outputs: |
     [OUTPUT]
         Name es
-        Match kube.*
-        Type  _doc
-        Host elasticsearch-master
+        Match *
+        Host kubelog-es-http
         Port 9200
         HTTP_User elastic
         HTTP_Passwd <PASS>
@@ -448,20 +457,9 @@ config:
         Index fluentbit
         Retry_Limit False
         Suppress_Type_Name On
-
-    [OUTPUT]
-        Name es
-        Match host.*
-        Type  _doc
-        Host elasticsearch-master
-        Port 9200
-        HTTP_User elastic
-        HTTP_Passwd <PASS>
-        tls On
-        tls.verify Off
-        Index fluentbit
-        Retry_Limit False
-        Suppress_Type_Name On
+        Replace_Dots On
+        Trace_Error On
+        Logstash_Format On
 
   ## https://docs.fluentbit.io/manual/administration/configuring-fluent-bit/classic-mode/upstream-servers
   ## This configuration is deprecated, please use `extraFiles` instead.
@@ -475,6 +473,60 @@ config:
         Time_Keep Off
         Time_Key time
         Time_Format %Y-%m-%dT%H:%M:%S.%L
+
+    [PARSER]
+        Name   apache
+        Format regex
+        Regex  ^(?<host>[^ ]*) [^ ]* (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^\"]*?)(?: +\S*)?)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>[^\"]*)")?$
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name   apache2
+        Format regex
+        Regex  ^(?<host>[^ ]*) [^ ]* (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^ ]*) +\S*)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>[^\"]*)")?$
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name   apache_error
+        Format regex
+        Regex  ^\[[^ ]* (?<time>[^\]]*)\] \[(?<level>[^\]]*)\](?: \[pid (?<pid>[^\]]*)\])?( \[client (?<client>[^\]]*)\])? (?<message>.*)$
+
+    [PARSER]
+        Name   nginx
+        Format regex
+        Regex ^(?<remote>[^ ]*) (?<host>[^ ]*) (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^\"]*?)(?: +\S*)?)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>[^\"]*)")?$
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name   json
+        Format json
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep   On
+
+    [PARSER]
+        # http://rubular.com/r/tjUt3Awgg4
+        Name cri
+        Format regex
+        Regex ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<message>.*)$
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+
+    [PARSER]
+        Name        syslog
+        Format      regex
+        Regex       ^\<(?<pri>[0-9]+)\>(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<host>[^ ]*) (?<ident>[a-zA-Z0-9_\/\.\-]*)(?:\[(?<pid>[0-9]+)\])?(?:[^\:]*\:)? *(?<message>.*)$
+        Time_Key    time
+        Time_Format %b %d %H:%M:%S
 
   # This allows adding more files with arbitrary filenames to /fluent-bit/etc/conf by providing key/value pairs.
   # The key becomes the filename, the value becomes the file content.
